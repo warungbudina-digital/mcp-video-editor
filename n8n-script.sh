@@ -11,29 +11,19 @@ sudo apt install -y htop jq
 git clone https://github.com/sun-guannan/VectCutAPI.git
 
 mkdir -p VectCutAPI/raw_video
-
 mkdir -p VectCutAPI/raw_audio
-
 mkdir -p VectCutAPI/output
 
 cat > VectCutAPI/requirements.txt <<'EOF'
 
 imageio
-
 psutil
-
 flask
-
 requests
-
 oss2
-
 aiohttp>=3.8.0
-
 pydantic>=2.0.0
-
 json5
-
 EOF
 
 sudo chown -R 1000:1000 VectCutAPI
@@ -131,19 +121,9 @@ cat > VectCutAPI/Dockerfile <<'EOF'
 
 FROM python:3.10-slim
 
-
-
 WORKDIR /app
-
-
-
 COPY . /app
-
-
-
 RUN pip install --no-cache-dir -r requirements.txt
-
-
 
 EXPOSE 9001
 
@@ -208,30 +188,18 @@ services:
     cpus: 1.5
 
   vectcutapi:
-    
     build: ./VectCutAPI
-    
     container_name: VectCutAPI
-    
     restart: always
-    
     networks:
-      
       - n8n_net
-    
     volumes:
-      
       - ./VectCutAPI/raw_video:/app/raw_video
-      
       - ./VectCutAPI/raw_audio:/app/raw_audio
-      
       - ./VectCutAPI/output:/app/output
-    
     mem_limit: 2g
-    
     cpus: 2.0
-
-
+    
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
