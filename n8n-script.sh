@@ -180,6 +180,7 @@ services:
       - WEBHOOK_URL=https://n8n.delitourandphotography.com
       - N8N_EDITOR_BASE_URL=https://n8n.delitourandphotography.com
       - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+      #- N8N_DATA_TABLES_MAX_SIZE_BYTES=
       - NODE_ENV=production
       - EXECUTIONS_PROCESS=main
     volumes:
