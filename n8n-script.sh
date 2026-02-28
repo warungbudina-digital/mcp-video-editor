@@ -202,7 +202,7 @@ services:
       - ./VectCutAPI/output:/app/output
     mem_limit: 2g
     cpus: 2.0
-    
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
