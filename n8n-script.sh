@@ -98,6 +98,8 @@ if [ ! -f "$IMAGE_FILE" ]; then
 fi
 
 mkdir n8n_data
+mkdir -p n8n_data/cookies
+sudo mv $HOME/mcp-video-editor/cookies.txt $HOME/mcp-video-editor/n8n_data/cookies
 mkdir -p vendor
 
 curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
