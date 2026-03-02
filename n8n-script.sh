@@ -107,7 +107,7 @@ curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
 
 chmod +x vendor/yt-dlp
 
-docker load -i "$IMAGE_FILE"
+sudo docker load -i "$IMAGE_FILE"
 
 echo "🏷️ Menandai image menjadi custom-n8n:latest ..."
 docker tag n8nio/n8n:latest custom-n8n:latest
@@ -151,7 +151,7 @@ RUN mkdir -p /home/node/.n8n/download && \
 USER node
 EOF
 
-docker build -f Dockerfile.extend -t custom-n8n:ffmpeg .
+sudo docker build -f Dockerfile.extend -t custom-n8n:ffmpeg .
 
 echo "✅ Extended image built: custom-n8n:ffmpeg"
 
@@ -210,7 +210,7 @@ services:
     networks:
       - n8n_net
     command: >
-      tunnel --no-autoupdate run --token xx
+      tunnel --no-autoupdate run --token x
 
 networks:
   n8n_net:
@@ -227,7 +227,7 @@ echo "==============================="
 echo "🚀  STARTING DOCKER COMPOSE"
 echo "==============================="
 
-docker compose up -d
+sudo docker compose up -d
 
 if [ $? -eq 0 ]; then
     echo "🎉 Deploy berhasil!"
