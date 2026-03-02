@@ -5,7 +5,7 @@ echo "🚀 STARTING DEPLOYMENT PROCESS"
 echo "==============================="
 
 echo "📦 Install tools pendukung (htop, jq)..."
-#sudo apt update
+sudo apt update
 sudo apt install -y htop jq
 
 git clone https://github.com/sun-guannan/VectCutAPI.git
@@ -75,7 +75,7 @@ echo "==============================="
 echo "📁 Folder Drive: $GDRIVE_FOLDER"
 echo "📁 Tujuan: $DEST_FOLDER"
 
-rclone copy --config="$RCLONE_CONF_PATH" "$REMOTE_NAME:$GDRIVE_FOLDER/$IMAGE_FILE" "$DEST_FOLDER" --progress
+sudo rclone copy --config="$RCLONE_CONF_PATH" "$REMOTE_NAME:$GDRIVE_FOLDER/$IMAGE_FILE" "$DEST_FOLDER" --progress
 
 if [ $? -ne 0 ]; then
   echo "❌ Gagal men-download n8n.tar dari Google Drive!"
@@ -110,7 +110,8 @@ chmod +x vendor/yt-dlp
 sudo docker load -i "$IMAGE_FILE"
 
 echo "🏷️ Menandai image menjadi custom-n8n:latest ..."
-docker tag n8nio/n8n:latest custom-n8n:latest
+
+sudo docker tag n8nio/n8n:latest custom-n8n:latest
 
 echo "✅ Image berhasil diload & ditag."
 
