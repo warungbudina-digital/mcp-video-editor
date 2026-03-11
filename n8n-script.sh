@@ -155,7 +155,7 @@ RUN apk add --no-cache \
     python3
 
 COPY vendor/yt-dlp /usr/local/bin/yt-dlp
-COPY requirements-n8n.txt
+COPY requirements_n8n.txt .
 
 RUN pip install --no-cache-dir -r requirements_n8n.txt
 RUN mkdir -p /home/node/.n8n/download && \
