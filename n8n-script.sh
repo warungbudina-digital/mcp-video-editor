@@ -14,6 +14,7 @@ mkdir -p VectCutAPI/raw_video
 mkdir -p VectCutAPI/raw_audio
 mkdir -p VectCutAPI/output
 
+
 cat > VectCutAPI/requirements.txt <<'EOF'
 
 imageio
@@ -135,6 +136,15 @@ EOF
 
 echo "==============================="
 
+cat > requirements_n8n.txt <<'EOF'
+opencv-python
+numpy
+librosa
+moviepy
+EOF
+
+echo "==============================="
+
 cat > Dockerfile.extend <<'EOF'
 FROM custom-n8n:latest
 
@@ -145,7 +155,9 @@ RUN apk add --no-cache \
     python3
 
 COPY vendor/yt-dlp /usr/local/bin/yt-dlp
+COPY requirements-n8n.txt
 
+RUN pip install --no-cache-dir -r requirements_n8n.txt
 RUN mkdir -p /home/node/.n8n/download && \
     chown -R node:node /home/node/.n8n
 
