@@ -101,7 +101,6 @@ fi
 
 mkdir n8n_data
 mkdir -p n8n_data/cookies
-#sudo mv $HOME/mcp-video-editor/cookies.txt $HOME/mcp-video-editor/n8n_data/cookies
 mkdir -p vendor
 
 curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
@@ -420,8 +419,9 @@ RUN chmod +x /usr/local/bin/yt-dlp
 COPY requirements_n8n.txt .
 COPY analyzer.py .
 
-RUN pip3 install --no-cache-dir -r requirements_n8n.txt
-RUN chown -R node:node /home/node/.n8n \
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements_n8n.txt
+RUN mkdir -p /home/node/.n8n/download && \
+RUN chown -R node:node /home/node/.n8n
 
 USER node
 EOF
