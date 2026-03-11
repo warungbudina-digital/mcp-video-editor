@@ -106,12 +106,9 @@ mkdir -p vendor
 curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
 -o vendor/yt-dlp
 
-chmod +x vendor/yt-dlp
-
 sudo docker load -i "$IMAGE_FILE"
 
 echo "🏷️ Menandai image menjadi custom-n8n:latest ..."
-
 sudo docker tag n8nio/n8n:latest custom-n8n:latest
 
 echo "✅ Image berhasil diload & ditag."
