@@ -10,6 +10,7 @@ sudo apt install -y htop jq
 
 git clone https://github.com/sun-guannan/VectCutAPI.git
 
+mkdir -p VectCutAPI/raw_transkrip
 mkdir -p VectCutAPI/raw_video
 mkdir -p VectCutAPI/raw_audio
 mkdir -p VectCutAPI/output
@@ -144,7 +145,6 @@ moviepy
 EOF
 
 echo "==============================="
-
 cat > analyzer.py <<'EOF'
 import os
 import json
@@ -407,22 +407,21 @@ FROM custom-n8n:latest
 
 USER root
 
-RUN apt-get update && apt-get install -y \
-    git \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN apk add --no-cache \
     ffmpeg \
-    python3
+    git \
+    wget \
+    python3 \
+    py3-pip
 
 COPY vendor/yt-dlp /usr/local/bin/yt-dlp
+RUN chmod +x /usr/local/bin/yt-dlp
+
 COPY requirements_n8n.txt .
 COPY analyzer.py .
 
 RUN pip3 install --no-cache-dir -r requirements_n8n.txt
-RUN mkdir -p /home/node/.n8n/download && \
-    chown -R node:node /home/node/.n8n
+RUN chown -R node:node /home/node/.n8n \
 
 USER node
 EOF
