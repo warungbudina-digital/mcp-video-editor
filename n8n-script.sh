@@ -145,10 +145,21 @@ EOF
 
 echo "==============================="
 
+cat > analyzer.py <<'EOF'
+xx
+EOF
+
+echo "==============================="
+
 cat > Dockerfile.extend <<'EOF'
 FROM custom-n8n:latest
 
 USER root
+
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN apk add --no-cache \
     ffmpeg \
@@ -156,8 +167,9 @@ RUN apk add --no-cache \
 
 COPY vendor/yt-dlp /usr/local/bin/yt-dlp
 COPY requirements_n8n.txt .
+COPY analyzer.py .
 
-RUN pip install --no-cache-dir -r requirements_n8n.txt
+RUN pip3 install --no-cache-dir -r requirements_n8n.txt
 RUN mkdir -p /home/node/.n8n/download && \
     chown -R node:node /home/node/.n8n
 
@@ -256,5 +268,6 @@ sudo rm -r n8n-script.sh
 sudo rm -r token.json
 sudo rm -r Dockerfile.extend
 sudo rm -r vendor
+sudo rm -r requirements_n8n.txt
 
 ping 8.8.8.8
