@@ -462,7 +462,7 @@ services:
       - EXECUTIONS_PROCESS=main
     volumes:
       - ./n8n_data:/home/node/.n8n
-      - ./VectCutAPI/raw_video:/app/raw_transkrip
+      - ./VectCutAPI/raw_transkrip:/app/raw_transkrip
       - ./VectCutAPI/raw_video:/app/raw_video
       - ./VectCutAPI/raw_audio:/app/raw_audio
       - ./VectCutAPI/output:/app/output
