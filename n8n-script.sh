@@ -139,6 +139,7 @@ numpy
 librosa
 moviepy
 scikit-learn
+pysrt
 EOF
 
 echo "==============================="
@@ -433,10 +434,7 @@ USER root
 RUN apk add --no-cache \
     ffmpeg \
     python3 
-
-RUN apk add --no-cache docker-cli
-RUN groupadd docker
-
+    
 COPY vendor/yt-dlp /usr/local/bin/yt-dlp
 RUN chmod +x /usr/local/bin/yt-dlp
 
@@ -445,7 +443,7 @@ EOF
 
 sudo docker build -f Dockerfile.extend -t custom-n8n:latest .
 
-echo "✅ Extended image built: custom-n8n:ffmpeg"
+echo "✅ Extended image built: custom-n8n:latest"
 
 # ========================
 # MEMBUAT DOCKER-COMPOSE
