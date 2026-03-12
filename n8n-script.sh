@@ -41,7 +41,6 @@ RCLONE_CONF_PATH="$HOME/.config/rclone/rclone.conf"
 DEST_FOLDER="$(pwd)"
 GDRIVE_FOLDER="Project-Tutorial/n8n"
 IMAGE_FILE="n8n.tar"
-TUNNEL="xx"
 
 echo ""
 echo "==============================="
@@ -134,7 +133,7 @@ EOF
 
 echo "==============================="
 
-cat > analisa_viral/requirements_n8n.txt <<'EOF'
+cat > analisa_viral/requirements.txt <<'EOF'
 opencv-python-headless
 numpy
 librosa
@@ -414,8 +413,8 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
     
-COPY requirements_n8n.txt .
-RUN pip install --no-cache-dir -r requirements_n8n.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY analyzer.py .
 
@@ -518,7 +517,7 @@ services:
     networks:
       - n8n_net
     command: >
-      tunnel --no-autoupdate run --token "$TUNNEL"
+      tunnel --no-autoupdate run --token x
 
 networks:
   n8n_net:
