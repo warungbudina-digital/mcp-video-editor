@@ -440,7 +440,7 @@ RUN chmod +x /usr/local/bin/yt-dlp
 USER node
 EOF
 
-sudo docker build -f Dockerfile.extend -t custom-n8n:ffmpeg .
+sudo docker build -f Dockerfile.extend -t custom-n8n:latest .
 
 echo "✅ Extended image built: custom-n8n:ffmpeg"
 
@@ -457,7 +457,7 @@ version: "3.8"
 
 services:
   n8n:
-    image: custom-n8n:ffmpeg
+    image: custom-n8n:latest
     container_name: n8n
     restart: always
     networks:
