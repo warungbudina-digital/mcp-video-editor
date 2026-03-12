@@ -139,6 +139,7 @@ opencv-python-headless
 numpy
 librosa
 moviepy
+scikit-learn
 EOF
 
 echo "==============================="
@@ -410,6 +411,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
     
 COPY requirements_n8n.txt .
@@ -435,9 +437,6 @@ RUN apk add --no-cache \
 
 COPY vendor/yt-dlp /usr/local/bin/yt-dlp
 RUN chmod +x /usr/local/bin/yt-dlp
-
-RUN mkdir -p /home/node/.n8n/download && \
-RUN chown -R node:node /home/node/.n8n
 
 USER node
 EOF
