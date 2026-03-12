@@ -434,6 +434,9 @@ RUN apk add --no-cache \
     ffmpeg \
     python3 
 
+RUN apk add --no-cache docker-cli
+RUN groupadd docker
+
 COPY vendor/yt-dlp /usr/local/bin/yt-dlp
 RUN chmod +x /usr/local/bin/yt-dlp
 
