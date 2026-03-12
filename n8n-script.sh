@@ -479,6 +479,7 @@ services:
       - ./VectCutAPI/raw_video:/app/raw_video
       - ./VectCutAPI/raw_audio:/app/raw_audio
       - ./VectCutAPI/output:/app/output
+      - /var/run/docker.sock:/var/run/docker.sock
     mem_limit: 1g
     cpus: 1.5
 
