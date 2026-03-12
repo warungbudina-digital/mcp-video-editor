@@ -15,7 +15,6 @@ mkdir -p VectCutAPI/raw_video
 mkdir -p VectCutAPI/raw_audio
 mkdir -p VectCutAPI/output
 
-
 cat > VectCutAPI/requirements.txt <<'EOF'
 
 imageio
@@ -34,7 +33,7 @@ echo "⬇️ Install rclone..."
 curl https://rclone.org/install.sh | sudo bash
 
 # ========================
-# KONFIGURASI RCLONE
+# KONFIGURASI RCLONE DAN TUNNEL
 # ========================
 REMOTE_NAME="gdrive"
 TOKEN_FILE="./token.json"
@@ -42,6 +41,7 @@ RCLONE_CONF_PATH="$HOME/.config/rclone/rclone.conf"
 DEST_FOLDER="$(pwd)"
 GDRIVE_FOLDER="Project-Tutorial/n8n"
 IMAGE_FILE="n8n.tar"
+TUNNEL="xx"
 
 echo ""
 echo "==============================="
@@ -49,7 +49,7 @@ echo "⚙️  CONFIGURING RCLONE"
 echo "==============================="
 
 if [ ! -f "$TOKEN_FILE" ]; then
-  echo "❌ File token.json tidak ditemukan di path: $TOKEN_FILE"
+  echo "❌ File token.json tidak ditemukan di path: $TOKEN_FIlE"
   exit 1
 fi
 
@@ -102,6 +102,7 @@ fi
 mkdir n8n_data
 mkdir -p n8n_data/cookies
 mkdir -p vendor
+mkdir -p analisa_viral
 
 curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
 -o vendor/yt-dlp
@@ -133,7 +134,7 @@ EOF
 
 echo "==============================="
 
-cat > requirements_n8n.txt <<'EOF'
+cat > analisa_viral/requirements_n8n.txt <<'EOF'
 opencv-python-headless
 numpy
 librosa
@@ -141,7 +142,7 @@ moviepy
 EOF
 
 echo "==============================="
-cat > analyzer.py <<'EOF'
+cat > analisa_viral/analyzer.py <<'EOF'
 import os
 import json
 import cv2
@@ -398,6 +399,31 @@ EOF
 
 echo "==============================="
 
+cat > analisa_viral/Dockerfile <<'EOF'
+FROM python:3.11-slim
+
+WORKDIR /app
+
+USER root
+
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+    
+COPY requirements_n8n.txt .
+RUN pip install --no-cache-dir -r requirements_n8n.txt
+
+COPY analyzer.py .
+
+CMD ["sleep","infinity"]
+EOF
+
+echo "✅ container analisa berhasil"
+
+echo "==============================="
+
 cat > Dockerfile.extend <<'EOF'
 FROM custom-n8n:latest
 
@@ -405,18 +431,11 @@ USER root
 
 RUN apk add --no-cache \
     ffmpeg \
-    git \
-    wget \
-    python3 \
-    py3-pip
+    python3 
 
 COPY vendor/yt-dlp /usr/local/bin/yt-dlp
 RUN chmod +x /usr/local/bin/yt-dlp
 
-COPY requirements_n8n.txt .
-COPY analyzer.py .
-
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements_n8n.txt
 RUN mkdir -p /home/node/.n8n/download && \
 RUN chown -R node:node /home/node/.n8n
 
@@ -426,7 +445,6 @@ EOF
 sudo docker build -f Dockerfile.extend -t custom-n8n:ffmpeg .
 
 echo "✅ Extended image built: custom-n8n:ffmpeg"
-
 
 # ========================
 # MEMBUAT DOCKER-COMPOSE
@@ -480,6 +498,20 @@ services:
     mem_limit: 2g
     cpus: 2.0
 
+  viral_analyzer:
+    build: ./analisa_viral
+    container_name: analisa_viral
+    restart: always
+    networks:
+      - n8n_net
+    volumes:
+      - ./VectCutAPI/raw_transkrip:/app/raw_transkrip
+      - ./VectCutAPI/raw_video:/app/raw_video
+      - ./VectCutAPI/raw_audio:/app/raw_audio
+      - ./VectCutAPI/output:/app/output
+    mem_limit: 2g
+    cpus: 2.0
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
@@ -487,7 +519,7 @@ services:
     networks:
       - n8n_net
     command: >
-      tunnel --no-autoupdate run --token x
+      tunnel --no-autoupdate run --token "$TUNNEL"
 
 networks:
   n8n_net:
@@ -517,6 +549,5 @@ sudo rm -r n8n-script.sh
 sudo rm -r token.json
 sudo rm -r Dockerfile.extend
 sudo rm -r vendor
-sudo rm -r requirements_n8n.txt
 
 ping 8.8.8.8
