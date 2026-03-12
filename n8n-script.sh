@@ -132,7 +132,6 @@ CMD ["python", "capcut_server.py"]
 EOF
 
 echo "==============================="
-
 cat > analisa_viral/requirements.txt <<'EOF'
 opencv-python-headless
 numpy
@@ -140,7 +139,39 @@ librosa
 moviepy
 scikit-learn
 pysrt
+scipy
+fastapi
+uvicorn
+python-multipart
 EOF
+
+echo "==============================="
+cat > analisa_viral/server.py <<'EOF'
+from fastapi import FastAPI
+import subprocess
+import json
+import os
+
+app = FastAPI()
+
+OUTPUT="/app/output/template.json"
+
+@app.get("/")
+def health():
+    return {"status":"video analyzer running"}
+
+@app.post("/analyze")
+def analyze():
+
+    subprocess.run(["python3","/app/analyzer.py"])
+
+    if os.path.exists(OUTPUT):
+        with open(OUTPUT) as f:
+            data=json.load(f)
+        return data
+
+    return {"error":"template not generated"}
+
 
 echo "==============================="
 cat > analisa_viral/analyzer.py <<'EOF'
@@ -418,8 +449,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY analyzer.py .
+COPY server.py .
 
-CMD ["sleep","infinity"]
+EXPOSE 9010
+
+CMD ["uvicorn","server:app","--host","0.0.0.0","--port","9010"]
 EOF
 
 echo "✅ container analisa berhasil"
