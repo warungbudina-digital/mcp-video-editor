@@ -172,7 +172,7 @@ def analyze():
         return data
 
     return {"error":"template not generated"}
-
+EOF
 
 echo "==============================="
 
@@ -430,6 +430,7 @@ with open(output_path,"w") as f:
 
 print("Template generated")
 print(json.dumps(template,indent=2))
+
 EOF
 
 echo "==============================="
