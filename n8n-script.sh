@@ -177,6 +177,7 @@ def analyze():
 echo "==============================="
 
 cat > analisa_viral/analyzer.py <<'EOF'
+
 import os
 import json
 import cv2
