@@ -146,6 +146,7 @@ python-multipart
 EOF
 
 echo "==============================="
+
 cat > analisa_viral/server.py <<'EOF'
 from fastapi import FastAPI
 import subprocess
@@ -174,6 +175,7 @@ def analyze():
 
 
 echo "==============================="
+
 cat > analisa_viral/analyzer.py <<'EOF'
 import os
 import json
