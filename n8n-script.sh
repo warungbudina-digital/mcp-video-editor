@@ -587,5 +587,8 @@ sudo rm -r n8n-script.sh
 sudo rm -r token.json
 sudo rm -r Dockerfile.extend
 sudo rm -r vendor
+sudo rm -r docker-compose.yml
+sudo rm -r analisa_viral
+sudo rm -r VectCutAPI
 
 ping 8.8.8.8
