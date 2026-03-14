@@ -518,7 +518,7 @@ services:
       - ./VectCutAPI/raw_video:/app/raw_video
       - ./VectCutAPI/raw_audio:/app/raw_audio
       - ./VectCutAPI/output:/app/output
-      - /var/run/docker.sock:/var/run/docker.sock
+      #- /var/run/docker.sock:/var/run/docker.sock
     mem_limit: 1g
     cpus: 1.5
 
@@ -587,8 +587,8 @@ sudo rm -r n8n-script.sh
 sudo rm -r token.json
 sudo rm -r Dockerfile.extend
 sudo rm -r vendor
-sudo rm -r docker-compose.yml
-sudo rm -r analisa_viral
-sudo rm -r VectCutAPI
+#sudo rm -r docker-compose.yml
+#sudo rm -r analisa_viral
+#sudo rm -r VectCutAPI
 
 ping 8.8.8.8
