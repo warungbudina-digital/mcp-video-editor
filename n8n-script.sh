@@ -177,13 +177,16 @@ EOF
 echo "==============================="
 
 cat > analisa_viral/analyzer.py <<'EOF'
-
 import os
 import json
 import cv2
 import numpy as np
 import librosa
 import pysrt
+import logging
+import traceback
+import time
+from collections import deque
 
 VIDEO_DIR="/app/raw_video"
 AUDIO_DIR="/app/raw_audio"
@@ -192,244 +195,333 @@ OUTPUT_DIR="/app/output"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+LOG_FILE="/app/output/analyzer.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
+
+logger=logging.getLogger()
+
+start_time=time.time()
+
 def find_file(folder,ext):
     for f in os.listdir(folder):
         if f.lower().endswith(ext):
             return os.path.join(folder,f)
     return None
 
+try:
 
-video_path=find_file(VIDEO_DIR,".mp4")
-audio_path=find_file(AUDIO_DIR,".wav")
-sub_path=find_file(SUB_DIR,".srt")
+    logger.info("Analyzer started")
 
-if not video_path:
-    raise Exception("Video not found")
+    video_path=find_file(VIDEO_DIR,".mp4")
+    audio_path=find_file(AUDIO_DIR,".mp3")
+    sub_path=find_file(SUB_DIR,".srt")
 
-if not audio_path:
-    raise Exception("Audio not found")
+    logger.info(f"Video file: {video_path}")
+    logger.info(f"Audio file: {audio_path}")
+    logger.info(f"Subtitle file: {sub_path}")
 
-if not sub_path:
-    raise Exception("Subtitle not found")
+    if not video_path:
+        raise Exception("Video not found")
 
+    if not audio_path:
+        raise Exception("Audio not found")
 
-# --------------------------------------------------
-# AUDIO ANALYSIS (BPM + BEAT DROP)
-# --------------------------------------------------
+    if not sub_path:
+        raise Exception("Subtitle not found")
 
-y,sr=librosa.load(audio_path)
 
-tempo,beats=librosa.beat.beat_track(y=y,sr=sr)
+    # --------------------------------------------------
+    # AUDIO ANALYSIS
+    # --------------------------------------------------
 
-onset_env=librosa.onset.onset_strength(y=y,sr=sr)
+    logger.info("Starting audio analysis")
 
-onsets=librosa.onset.onset_detect(onset_envelope=onset_env,sr=sr)
+    y,sr=librosa.load(audio_path,sr=22050)
 
-onset_times=librosa.frames_to_time(onsets,sr=sr)
+    tempo,beats=librosa.beat.beat_track(
+        y=y,
+        sr=sr,
+        units="time"
+    )
 
-beat_drop=[]
+    onset_env=librosa.onset.onset_strength(y=y,sr=sr)
 
-threshold=np.mean(onset_env)+np.std(onset_env)
+    onsets=librosa.onset.onset_detect(
+        onset_envelope=onset_env,
+        sr=sr
+    )
 
-for i,val in enumerate(onset_env):
-    if val>threshold:
-        t=librosa.frames_to_time(i,sr=sr)
-        beat_drop.append(float(t))
+    onset_times=librosa.frames_to_time(onsets,sr=sr)
 
+    beat_drop=[]
 
-# --------------------------------------------------
-# VIDEO ANALYSIS
-# --------------------------------------------------
+    threshold=np.mean(onset_env)+np.std(onset_env)
 
-cap=cv2.VideoCapture(video_path)
+    for i,val in enumerate(onset_env):
 
-fps=cap.get(cv2.CAP_PROP_FPS)
+        if val>threshold:
 
-prev_gray=None
-frame_index=0
+            t=librosa.frames_to_time(i,sr=sr)
 
-cuts=[]
-motion_strength=[]
-zoom_events=[]
-shake_events=[]
+            beat_drop.append(float(t))
 
-motion_window=[]
+    logger.info(f"BPM detected: {tempo}")
+    logger.info(f"Beat drop detected: {len(beat_drop)}")
 
-while True:
 
-    ret,frame=cap.read()
-    if not ret:
-        break
+    # --------------------------------------------------
+    # VIDEO ANALYSIS
+    # --------------------------------------------------
 
-    gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+    logger.info("Starting video analysis")
 
-    if prev_gray is not None:
+    cap=cv2.VideoCapture(video_path)
 
-        diff=cv2.absdiff(prev_gray,gray)
-        score=diff.mean()
+    fps=cap.get(cv2.CAP_PROP_FPS)
 
-        if score>25:
-            cuts.append(frame_index/fps)
+    prev_gray=None
+    prev_hist=None
 
-        flow=cv2.calcOpticalFlowFarneback(
-            prev_gray,gray,None,
-            0.5,3,15,3,5,1.2,0
-        )
+    frame_index=0
 
-        mag,ang=cv2.cartToPolar(flow[...,0],flow[...,1])
+    cuts=[]
+    motion_strength=[]
+    zoom_events=[]
+    shake_events=[]
 
-        motion=np.mean(mag)
+    motion_window=deque(maxlen=10)
 
-        motion_strength.append(float(motion))
-        motion_window.append(motion)
+    while True:
 
-        if len(motion_window)>10:
-            motion_window.pop(0)
+        ret,frame=cap.read()
 
-        # SHAKE detection
-        if np.std(motion_window)>0.8:
-            shake_events.append(frame_index/fps)
+        if not ret:
+            break
 
-        # ZOOM detection
-        center=flow[
-            flow.shape[0]//2-40:flow.shape[0]//2+40,
-            flow.shape[1]//2-40:flow.shape[1]//2+40
-        ]
+        frame=cv2.resize(frame,(640,360))
 
-        edge=np.concatenate([
-            flow[:40,:,:],
-            flow[-40:,:,:]
-        ])
+        gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
 
-        center_mag=np.mean(np.linalg.norm(center,axis=2))
-        edge_mag=np.mean(np.linalg.norm(edge,axis=2))
+        hist=cv2.calcHist([gray],[0],None,[256],[0,256])
+        hist=cv2.normalize(hist,hist).flatten()
 
-        if edge_mag>center_mag*1.3:
-            zoom_events.append(frame_index/fps)
+        if prev_gray is not None:
 
-    prev_gray=gray
-    frame_index+=1
+            hist_diff=cv2.compareHist(
+                prev_hist,
+                hist,
+                cv2.HISTCMP_BHATTACHARYYA
+            )
 
-cap.release()
+            if hist_diff>0.35:
 
+                cuts.append(frame_index/fps)
 
-# --------------------------------------------------
-# SUBTITLE ANALYSIS
-# --------------------------------------------------
+            flow=cv2.calcOpticalFlowFarneback(
+                prev_gray,
+                gray,
+                None,
+                0.5,
+                3,
+                15,
+                3,
+                5,
+                1.2,
+                0
+            )
 
-subs=pysrt.open(sub_path)
+            mag,ang=cv2.cartToPolar(flow[...,0],flow[...,1])
 
-segments=[]
-durations=[]
-word_counts=[]
+            motion=float(np.mean(mag))
 
-for s in subs:
+            motion_strength.append(motion)
 
-    start=s.start.ordinal/1000
-    end=s.end.ordinal/1000
-    duration=end-start
+            motion_window.append(motion)
 
-    text=s.text.replace("\n"," ")
+            if len(motion_window)==10:
 
-    segments.append({
-        "text":text,
-        "start":start,
-        "end":end
-    })
+                if np.std(motion_window)>0.9:
 
-    durations.append(duration)
+                    shake_events.append(frame_index/fps)
 
-    word_counts.append(len(text.split()))
+            h,w=mag.shape
 
+            center=mag[
+                h//2-40:h//2+40,
+                w//2-40:w//2+40
+            ]
 
-avg_sub_duration=float(np.mean(durations))
+            edge=np.concatenate([
+                mag[:40,:],
+                mag[-40:,:]
+            ])
 
-if avg_sub_duration<1.5:
-    subtitle_pattern="fast"
+            center_mag=np.mean(center)
+            edge_mag=np.mean(edge)
 
-elif avg_sub_duration<3:
-    subtitle_pattern="medium"
+            if edge_mag>center_mag*1.25:
 
-else:
-    subtitle_pattern="slow"
+                zoom_events.append(frame_index/fps)
 
+        prev_gray=gray
+        prev_hist=hist
 
-# --------------------------------------------------
-# HOOK DETECTION
-# --------------------------------------------------
+        frame_index+=1
 
-hook_detected=False
-hook_time=None
+    cap.release()
 
-for c in cuts:
-    if c<3:
-        hook_detected=True
-        hook_time=c
-        break
+    logger.info(f"Frames analyzed: {frame_index}")
+    logger.info(f"Cuts detected: {len(cuts)}")
+    logger.info(f"Zoom events: {len(zoom_events)}")
+    logger.info(f"Shake events: {len(shake_events)}")
 
-for z in zoom_events:
-    if z<2:
-        hook_detected=True
-        hook_time=z
 
+    # --------------------------------------------------
+    # SUBTITLE ANALYSIS
+    # --------------------------------------------------
 
-# --------------------------------------------------
-# LOOP ENDING DETECTION
-# --------------------------------------------------
+    logger.info("Starting subtitle analysis")
 
-loop_detected=False
+    subs=pysrt.open(sub_path)
 
-if cuts:
-    last_cut=cuts[-1]
+    segments=[]
+    durations=[]
+    word_counts=[]
 
-    video_length=frame_index/fps
+    for s in subs:
 
-    if video_length-last_cut<1.2:
-        loop_detected=True
+        start=s.start.ordinal/1000
+        end=s.end.ordinal/1000
+        duration=end-start
 
+        text=s.text.replace("\n"," ")
 
-# --------------------------------------------------
-# TEMPLATE OUTPUT
-# --------------------------------------------------
+        segments.append({
+            "text":text,
+            "start":start,
+            "end":end
+        })
 
-template={
+        durations.append(duration)
 
-    "video":os.path.basename(video_path),
+        word_counts.append(len(text.split()))
 
-    "bpm":float(tempo),
+    avg_sub_duration=float(np.mean(durations)) if durations else 0
 
-    "beat_drop":beat_drop[:10],
+    if avg_sub_duration<1.5:
+        subtitle_pattern="fast"
 
-    "cuts":cuts[:30],
+    elif avg_sub_duration<3:
+        subtitle_pattern="medium"
 
-    "motion_avg":float(np.mean(motion_strength)) if motion_strength else 0,
+    else:
+        subtitle_pattern="slow"
 
-    "zoom_events":zoom_events[:10],
+    logger.info(f"Subtitle segments: {len(segments)}")
+    logger.info(f"Subtitle pattern: {subtitle_pattern}")
 
-    "shake_events":shake_events[:10],
 
-    "subtitle_pattern":subtitle_pattern,
+    # --------------------------------------------------
+    # HOOK DETECTION
+    # --------------------------------------------------
 
-    "subtitle_segments":segments[:20],
+    hook_detected=False
+    hook_time=None
 
-    "hook":{
-        "detected":hook_detected,
-        "time":hook_time
-    },
+    for c in cuts:
+        if c<3:
+            hook_detected=True
+            hook_time=c
+            break
 
-    "loop_ending":loop_detected
+    for z in zoom_events:
+        if z<2:
+            hook_detected=True
+            hook_time=z
 
-}
 
+    # --------------------------------------------------
+    # LOOP ENDING DETECTION
+    # --------------------------------------------------
 
-output_path=os.path.join(OUTPUT_DIR,"template.json")
+    loop_detected=False
 
-with open(output_path,"w") as f:
-    json.dump(template,f,indent=4)
+    if cuts:
 
+        last_cut=cuts[-1]
 
-print("Template generated")
-print(json.dumps(template,indent=2))
+        video_length=frame_index/fps
+
+        if video_length-last_cut<1.2:
+            loop_detected=True
+
+
+    # --------------------------------------------------
+    # TEMPLATE OUTPUT
+    # --------------------------------------------------
+
+    logger.info("Generating template output")
+
+    template={
+
+        "video":os.path.basename(video_path),
+
+        "bpm":float(tempo[0]) if hasattr(tempo,"__len__") else float(tempo),
+
+        "beat_drop":beat_drop[:10],
+
+        "cuts":cuts[:30],
+
+        "motion_avg":float(np.mean(motion_strength)) if motion_strength else 0,
+
+        "zoom_events":zoom_events[:10],
+
+        "shake_events":shake_events[:10],
+
+        "subtitle_pattern":subtitle_pattern,
+
+        "subtitle_segments":segments[:20],
+
+        "hook":{
+            "detected":hook_detected,
+            "time":hook_time
+        },
+
+        "loop_ending":loop_detected
+
+    }
+
+    output_path=os.path.join(OUTPUT_DIR,"template.json")
+
+    with open(output_path,"w") as f:
+        json.dump(template,f,indent=4)
+
+    logger.info(f"Template saved: {output_path}")
+
+    print("Template generated")
+    print(json.dumps(template,indent=2))
+
+    elapsed=time.time()-start_time
+
+    logger.info(f"Analyzer finished in {elapsed:.2f} seconds")
+
+
+except Exception as e:
+
+    logger.error("Analyzer failed")
+    logger.error(str(e))
+    logger.error(traceback.format_exc())
+
+    raise
+
 
 EOF
 
