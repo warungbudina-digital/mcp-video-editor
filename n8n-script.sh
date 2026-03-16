@@ -395,6 +395,8 @@ def analyze_audio(audio):
         units="time"
     )
 
+    tempo=float(np.mean(tempo))
+
     return float(tempo),beats
 
 
