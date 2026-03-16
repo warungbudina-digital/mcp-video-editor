@@ -138,6 +138,7 @@ numpy
 librosa
 moviepy
 scikit-learn
+scenedetect
 pysrt
 scipy
 fastapi
