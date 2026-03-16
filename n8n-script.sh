@@ -139,6 +139,8 @@ librosa
 moviepy
 scikit-learn
 scenedetect
+open_clip_torch
+torch
 pysrt
 scipy
 fastapi
