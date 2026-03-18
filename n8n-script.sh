@@ -151,35 +151,6 @@ EOF
 echo "==============================="
 
 cat > analisa_viral/server.py <<'EOF'
-from fastapi import FastAPI
-import subprocess
-import json
-import os
-
-app = FastAPI()
-
-OUTPUT="/app/output/template.json"
-
-@app.get("/")
-def health():
-    return {"status":"video analyzer running"}
-
-@app.post("/analyze")
-def analyze():
-
-    subprocess.run(["python3","/app/analyzer.py"])
-
-    if os.path.exists(OUTPUT):
-        with open(OUTPUT) as f:
-            data=json.load(f)
-        return data
-
-    return {"error":"template not generated"}
-EOF
-
-echo "==============================="
-
-cat > analisa_viral/analyzer.py <<'EOF'
 import os
 import cv2
 import json
@@ -188,6 +159,8 @@ import librosa
 import pysrt
 import torch
 import open_clip
+import subprocess
+import math
 from PIL import Image
 
 from scenedetect import VideoManager, SceneManager
@@ -200,7 +173,6 @@ OUTPUT_DIR="/app/output"
 
 os.makedirs(OUTPUT_DIR,exist_ok=True)
 
-
 # -----------------------------
 # JSON SAFE
 # -----------------------------
@@ -210,160 +182,188 @@ def json_safe(obj):
         return int(obj)
 
     if isinstance(obj,np.floating):
-        return float(obj)
+        val=float(obj)
+        if math.isnan(val) or math.isinf(val):
+            return 0.0
+        return val
+
+    if isinstance(obj,float):
+        if math.isnan(obj) or math.isinf(obj):
+            return 0.0
+        return obj
 
     if isinstance(obj,np.ndarray):
         return obj.tolist()
 
     return obj
 
+def safe_mean(arr):
+    return float(np.mean(arr)) if len(arr)>0 else 0.0
+
+# -----------------------------
+# NORMALIZE VIDEO (FFMPEG)
+# -----------------------------
+def normalize_video(input_path):
+
+    output_path="/tmp/normalized.mp4"
+
+    cmd=[
+        "ffmpeg","-y",
+        "-i",input_path,
+        "-vf","scale=1280:720,fps=30",
+        "-c:v","libx264",
+        "-preset","fast",
+        "-crf","23",
+        "-pix_fmt","yuv420p",
+        "-c:a","aac",
+        "-ar","22050",
+        output_path
+    ]
+
+    subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+
+    return output_path
 
 # -----------------------------
 # FIND FILE
 # -----------------------------
 def find_file(folder,ext):
-
     for f in os.listdir(folder):
-
         if f.lower().endswith(ext):
-
             return os.path.join(folder,f)
-
     return None
 
-
 # -----------------------------
-# LOAD CLIP
+# LOAD CLIP (UPGRADE B16)
 # -----------------------------
 device="cuda" if torch.cuda.is_available() else "cpu"
 
 model,_,preprocess=open_clip.create_model_and_transforms(
-"ViT-B-32",
+"ViT-B-16",
 pretrained="openai"
 )
 
 model.to(device)
 
+# semantic
 semantic_labels=[
-"person talking",
-"reaction face",
-"b-roll footage",
-"screen recording",
-"product shot",
-"presentation slide",
-"gaming footage"
+"person talking","reaction face","b-roll footage",
+"screen recording","product shot","presentation slide","gaming footage"
 ]
 
 tokens=open_clip.tokenize(semantic_labels).to(device)
 
+# emotion
+emotion_labels=[
+"happy face","sad face","angry face","surprised face","neutral face"
+]
+
+emotion_tokens=open_clip.tokenize(emotion_labels).to(device)
+
+# meme
+meme_labels=[
+"funny scene","meme template","reaction meme","text overlay meme"
+]
+
+meme_tokens=open_clip.tokenize(meme_labels).to(device)
+
 with torch.no_grad():
-
     text_features=model.encode_text(tokens)
-
+    emotion_features=model.encode_text(emotion_tokens)
+    meme_features=model.encode_text(meme_tokens)
 
 # -----------------------------
-# SEMANTIC DETECTION
+# DETECTIONS
 # -----------------------------
-def semantic_scene(frame):
+def clip_classify(frame,features,labels):
 
     image=Image.fromarray(cv2.cvtColor(frame,cv2.COLOR_BGR2RGB))
     image=preprocess(image).unsqueeze(0).to(device)
 
     with torch.no_grad():
-
         img=model.encode_image(image)
+        sim=(img @ features.T).softmax(dim=-1)
 
-        sim=(img @ text_features.T).softmax(dim=-1)
+    return labels[sim.argmax().item()]
 
-    idx=sim.argmax().item()
+def semantic_scene(frame):
+    return clip_classify(frame,text_features,semantic_labels)
 
-    return semantic_labels[idx]
+def detect_emotion(frame):
+    return clip_classify(frame,emotion_features,emotion_labels)
 
+def detect_meme(frame):
+    return clip_classify(frame,meme_features,meme_labels)
 
 # -----------------------------
-# FACE / FRAMING DETECTION
+# FACE
 # -----------------------------
 face_model=cv2.CascadeClassifier(
-cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+cv2.data.haarcascades+"haarcascade_frontalface_default.xml"
 )
 
 def framing_detection(frame):
 
     gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+    faces=face_model.detectMultiScale(gray,1.3,5)
 
-    faces=face_model.detectMultiScale(
-        gray,
-        1.3,
-        5
-    )
-
-    result={
-
-        "faces":[],
-        "speaker_position":"unknown"
-
-    }
-
+    result={"faces":[],"speaker_position":"unknown"}
     h,w=frame.shape[:2]
 
     for (x,y,wf,hf) in faces:
 
         result["faces"].append({
-
-            "x":int(x),
-            "y":int(y),
-            "w":int(wf),
-            "h":int(hf)
-
+            "x":int(x),"y":int(y),"w":int(wf),"h":int(hf)
         })
 
         center=x+wf/2
 
-        if center < w*0.33:
-
+        if center<w*0.33:
             result["speaker_position"]="left"
-
-        elif center > w*0.66:
-
+        elif center>w*0.66:
             result["speaker_position"]="right"
-
         else:
-
             result["speaker_position"]="center"
 
     return result
 
-
 # -----------------------------
-# MOTION DETECTION
+# MOTION + CAMERA
 # -----------------------------
 def motion_score(prev,cur):
 
-    flow=cv2.calcOpticalFlowFarneback(
-        prev,
-        cur,
-        None,
-        0.5,
-        3,
-        15,
-        3,
-        5,
-        1.2,
-        0
-    )
-
+    flow=cv2.calcOpticalFlowFarneback(prev,cur,None,0.5,3,15,3,5,1.2,0)
     mag,_=cv2.cartToPolar(flow[...,0],flow[...,1])
 
-    return float(np.mean(mag))
+    val=np.mean(mag)
+    if np.isnan(val) or np.isinf(val):
+        return 0.0
 
+    return float(val)
+
+def camera_movement(prev,cur):
+
+    if prev is None:
+        return "static"
+
+    flow=cv2.calcOpticalFlowFarneback(prev,cur,None,0.5,3,15,3,5,1.2,0)
+    mag,_=cv2.cartToPolar(flow[...,0],flow[...,1])
+
+    avg=np.mean(mag)
+
+    if avg<0.5:
+        return "static"
+    elif avg<2:
+        return "slow_move"
+    else:
+        return "fast_move"
 
 # -----------------------------
-# TRANSITION DETECTION
+# TRANSITION
 # -----------------------------
 def detect_transition(prev_frame,cur_frame):
 
     if prev_frame is None:
-
         return "cut"
 
     prev_hist=cv2.calcHist([prev_frame],[0],None,[256],[0,256])
@@ -372,36 +372,38 @@ def detect_transition(prev_frame,cur_frame):
     diff=cv2.compareHist(prev_hist,cur_hist,cv2.HISTCMP_BHATTACHARYYA)
 
     if diff>0.5:
-
         return "flash"
-
     if diff>0.3:
-
         return "fade"
 
     return "cut"
 
-
 # -----------------------------
-# AUDIO ANALYSIS
+# AUDIO
 # -----------------------------
 def analyze_audio(audio):
 
-    y,sr=librosa.load(audio,sr=22050)
+    y, sr = librosa.load(audio, sr=22050)
 
-    tempo,beats=librosa.beat.beat_track(
+    tempo, beats = librosa.beat.beat_track(
         y=y,
         sr=sr,
         units="time"
     )
 
-    tempo=float(np.mean(tempo))
+    # FIX tempo (handle array / scalar)
+    if isinstance(tempo, np.ndarray):
+        if tempo.size > 0:
+            tempo = float(tempo[0])
+        else:
+            tempo = 0.0
+    else:
+        tempo = float(tempo)
 
-    return float(tempo),beats
-
+    return tempo, beats
 
 # -----------------------------
-# SUBTITLE STYLE DETECTION
+# SUBTITLE
 # -----------------------------
 def analyze_subtitles(sub_file):
 
@@ -414,17 +416,9 @@ def analyze_subtitles(sub_file):
 
         start=s.start.ordinal/1000
         end=s.end.ordinal/1000
-
         text=s.text.replace("\n"," ")
 
-        segments.append({
-
-            "text":text,
-            "start":start,
-            "end":end
-
-        })
-
+        segments.append({"text":text,"start":start,"end":end})
         durations.append(end-start)
 
     avg=np.mean(durations) if durations else 0
@@ -432,41 +426,29 @@ def analyze_subtitles(sub_file):
     style={}
 
     if avg<1.2:
-
         style["speed"]="fast"
-
     elif avg<2.5:
-
         style["speed"]="medium"
-
     else:
-
         style["speed"]="slow"
 
-    style["word_count_avg"]=np.mean(
-        [len(x["text"].split()) for x in segments]
-    )
+    word_counts=[len(x["text"].split()) for x in segments]
+    style["word_count_avg"]=safe_mean(word_counts)
 
     return style,segments
 
-
 # -----------------------------
-# SCENE DETECTION
+# SCENE
 # -----------------------------
 def detect_scenes(video):
 
     video_manager=VideoManager([video])
     scene_manager=SceneManager()
 
-    scene_manager.add_detector(
-        ContentDetector(threshold=27)
-    )
+    scene_manager.add_detector(ContentDetector(threshold=20))
 
     video_manager.start()
-
-    scene_manager.detect_scenes(
-        frame_source=video_manager
-    )
+    scene_manager.detect_scenes(frame_source=video_manager)
 
     scene_list=scene_manager.get_scene_list()
 
@@ -478,18 +460,38 @@ def detect_scenes(video):
         end=s[1].get_seconds()
 
         scenes.append({
-
             "start":start,
             "end":end,
             "duration":end-start
-
         })
 
     return scenes
 
+# -----------------------------
+# VIRAL HOOK
+# -----------------------------
+def viral_hook(scene):
+
+    score=0
+
+    if scene["duration"]<2:
+        score+=2
+    if scene["motion"]>1:
+        score+=2
+    if scene["beat_sync"]:
+        score+=1
+    if len(scene["framing"]["faces"])>0:
+        score+=2
+
+    if score>=5:
+        return "strong_hook"
+    elif score>=3:
+        return "medium_hook"
+    else:
+        return "weak_hook"
 
 # -----------------------------
-# MAIN ANALYSIS
+# MAIN
 # -----------------------------
 def run():
 
@@ -497,13 +499,23 @@ def run():
     audio=find_file(AUDIO_DIR,".mp3")
     sub=find_file(SUB_DIR,".srt")
 
-    tempo,beats=analyze_audio(audio)
+    video=normalize_video(video)
 
+    tempo,beats=analyze_audio(audio)
     subtitle_style,subs=analyze_subtitles(sub)
 
     scenes=detect_scenes(video)
 
     cap=cv2.VideoCapture(video)
+
+    if not cap.isOpened():
+        raise Exception("Video gagal dibuka")
+
+    if len(scenes)==0:
+        fps=cap.get(cv2.CAP_PROP_FPS)
+        frames=cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        duration=frames/fps if fps>0 else 0
+        scenes=[{"start":0,"end":duration,"duration":duration}]
 
     prev_gray=None
     prev_frame=None
@@ -512,9 +524,7 @@ def run():
 
     for s in scenes:
 
-        mid=(s["start"]+s["end"])/2
-
-        cap.set(cv2.CAP_PROP_POS_MSEC,mid*1000)
+        cap.set(cv2.CAP_PROP_POS_MSEC,s["start"]*1000)
 
         ret,frame=cap.read()
 
@@ -524,96 +534,81 @@ def run():
         gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
 
         semantic=semantic_scene(frame)
+        emotion=detect_emotion(frame)
+        meme=detect_meme(frame)
 
         framing=framing_detection(frame)
 
         motion=0
-
         if prev_gray is not None:
-
             motion=motion_score(prev_gray,gray)
 
+        camera=camera_movement(prev_gray,gray)
         transition=detect_transition(prev_frame,frame)
 
-        beat_sync=False
+        beat_sync=any(abs(b-s["start"])<0.2 for b in beats)
 
-        for b in beats:
-
-            if abs(b-s["start"])<0.2:
-
-                beat_sync=True
-
-        scene_data.append({
+        scene_obj={
 
             "start":s["start"],
             "end":s["end"],
             "duration":s["duration"],
 
             "semantic":semantic,
+            "emotion":emotion,
+            "meme":meme,
 
             "motion":motion,
+            "camera_movement":camera,
 
             "transition":transition,
-
             "beat_sync":beat_sync,
 
             "framing":framing
+        }
 
-        })
+        scene_obj["hook_strength"]=viral_hook(scene_obj)
+
+        scene_data.append(scene_obj)
 
         prev_gray=gray
         prev_frame=frame
 
-
     cap.release()
+
+    if len(scene_data)==0:
+        scene_data=[{
+            "start":0,"end":0,"duration":0,
+            "semantic":"unknown","emotion":"neutral","meme":"none",
+            "motion":0,"camera_movement":"static",
+            "transition":"cut","beat_sync":False,
+            "framing":{"faces":[],"speaker_position":"unknown"},
+            "hook_strength":"weak_hook"
+        }]
 
     fingerprint={
 
-        "avg_scene_length":float(
-            np.mean([x["duration"] for x in scene_data])
-        ),
-
+        "avg_scene_length":safe_mean([x["duration"] for x in scene_data]),
         "cut_count":len(scene_data),
-
-        "avg_motion":float(
-            np.mean([x["motion"] for x in scene_data])
-        )
-
+        "avg_motion":safe_mean([x["motion"] for x in scene_data])
     }
 
     template={
 
         "video":os.path.basename(video),
-
         "bpm":tempo,
-
         "subtitle_style":subtitle_style,
-
         "subtitle_segments":subs,
-
         "scene_analysis":scene_data,
-
         "editing_fingerprint":fingerprint
-
     }
 
-    out=os.path.join(
-        OUTPUT_DIR,
-        "template.json"
-    )
+    out=os.path.join(OUTPUT_DIR,"template.json")
 
     with open(out,"w") as f:
-
-        json.dump(
-            template,
-            f,
-            indent=4,
-            default=json_safe
-        )
-
+        json.dump(template,f,indent=4,default=json_safe)
 
 if __name__=="__main__":
-
     run()
 
 EOF
