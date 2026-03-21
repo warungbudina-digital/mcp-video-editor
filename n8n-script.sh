@@ -277,11 +277,13 @@ model.to(device)
 
 semantic_labels=[
     "person talking","reaction face","b-roll footage",
+    "podcast conversation","youtube talking head","motivational speech",
+    "slow motion footage","dark room","low quality blurry image"
     "screen recording","product shot","presentation slide","gaming footage"
 ]
 
 emotion_labels=[
-    "happy face","sad face","angry face","surprised face","neutral face"
+    "happy face","sad face","angry face","surprised face","neutral face","excited face"
 ]
 
 meme_labels=[
