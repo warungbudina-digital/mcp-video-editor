@@ -1,0 +1,10 @@
+# secrets
+token.json
+
+# generated runtime artifacts
+n8n.tar
+vendor/
+VectCutAPI/
+analisa_viral/
+n8n_data/
+output/
