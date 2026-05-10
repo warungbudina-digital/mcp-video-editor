@@ -12,11 +12,11 @@ Open-source code untuk download, analyse, dan edit video menggunakan ffmpeg, lal
 
 Script akan:
 - install tool sistem yang dibutuhkan
-- clone `VectCutAPI`
+- siapkan shared workspace lokal untuk video/audio/transkrip/output
 - siapkan konfigurasi `rclone` dari `token.json`
 - download `n8n.tar` dari Google Drive
 - load image n8n dan build image extended (`ffmpeg + yt-dlp`)
-- generate service `VectCutAPI`, `viral_analyzer`, dan `docker-compose.yml`
+- generate service `viral_analyzer` dan `docker-compose.yml`
 - menjalankan stack Docker
 
 ## Prasyarat
