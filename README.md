@@ -43,3 +43,15 @@ Perbaikan yang sudah diterapkan tanpa mengubah alur besar script:
 - `cloudflared` tidak lagi hardcoded token `x`, sekarang pakai env `TUNNEL_TOKEN`
 - cleanup tidak lagi menghapus script dan token yang dibutuhkan untuk rerun/debug
 - `docker compose up` dibuat eksplisit `--build`
+
+
+## V2 tanpa VectCutAPI
+
+Versi terbaru sudah menghilangkan dependensi `VectCutAPI` dari flow deploy. Folder data sekarang dipusatkan ke `workspace/` dengan subfolder:
+
+- `workspace/raw_video`
+- `workspace/raw_audio`
+- `workspace/raw_transkrip`
+- `workspace/output`
+
+Entry point lama `n8n-script.sh` tetap dipertahankan sebagai wrapper agar workflow lama tidak putus.
