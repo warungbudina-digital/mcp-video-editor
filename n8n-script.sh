@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+
 
 echo "==============================="
 echo "🚀 STARTING DEPLOYMENT PROCESS"
@@ -8,7 +10,11 @@ echo "📦 Install tools pendukung (htop, jq)..."
 sudo apt update
 sudo apt install -y htop jq
 
-git clone https://github.com/sun-guannan/VectCutAPI.git
+if [ ! -d VectCutAPI/.git ]; then
+  git clone https://github.com/sun-guannan/VectCutAPI.git
+else
+  echo "ℹ️  VectCutAPI sudah ada, lewati clone."
+fi
 
 mkdir -p VectCutAPI/raw_transkrip
 mkdir -p VectCutAPI/raw_video
@@ -48,7 +54,7 @@ echo "⚙️  CONFIGURING RCLONE"
 echo "==============================="
 
 if [ ! -f "$TOKEN_FILE" ]; then
-  echo "❌ File token.json tidak ditemukan di path: $TOKEN_FIlE"
+  echo "❌ File token.json tidak ditemukan di path: $TOKEN_FILE"
   exit 1
 fi
 
@@ -64,6 +70,11 @@ token = $TOKEN
 EOF
 
 echo "✅ rclone.conf berhasil dibuat."
+
+if [ -z "${TUNNEL_TOKEN:-}" ]; then
+  echo "❌ Env TUNNEL_TOKEN belum di-set. Export dulu token Cloudflare Tunnel sebelum menjalankan script ini."
+  exit 1
+fi
 
 # ========================
 # DOWNLOAD IMAGE n8n.tar
@@ -98,13 +109,14 @@ if [ ! -f "$IMAGE_FILE" ]; then
   exit 1
 fi
 
-mkdir n8n_data
+mkdir -p n8n_data
 mkdir -p n8n_data/cookies
 mkdir -p vendor
 mkdir -p analisa_viral
 
 curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
 -o vendor/yt-dlp
+chmod +x vendor/yt-dlp
 
 sudo docker load -i "$IMAGE_FILE"
 
@@ -278,7 +290,7 @@ model.to(device)
 semantic_labels=[
     "person talking","reaction face","b-roll footage",
     "podcast conversation","youtube talking head","motivational speech",
-    "slow motion footage","dark room","low quality blurry image"
+    "slow motion footage","dark room","low quality blurry image",
     "screen recording","product shot","presentation slide","gaming footage"
 ]
 
@@ -677,8 +689,6 @@ echo "📝  GENERATING docker-compose.yml"
 echo "==============================="
 
 cat > docker-compose.yml <<'EOF'
-version: "3.8"
-
 services:
   n8n:
     image: custom-n8n:latest
@@ -742,7 +752,7 @@ services:
     networks:
       - n8n_net
     command: >
-      tunnel --no-autoupdate run --token x
+      tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
 
 networks:
   n8n_net:
@@ -759,7 +769,7 @@ echo "==============================="
 echo "🚀  STARTING DOCKER COMPOSE"
 echo "==============================="
 
-sudo docker compose up -d
+sudo docker compose up -d --build
 
 if [ $? -eq 0 ]; then
     echo "🎉 Deploy berhasil!"
@@ -767,13 +777,7 @@ if [ $? -eq 0 ]; then
 else
     echo "❌ Deploy gagal!"
 fi
-sudo rm -r n8n.tar
-sudo rm -r n8n-script.sh
-sudo rm -r token.json
-sudo rm -r Dockerfile.extend
-sudo rm -r vendor
-#sudo rm -r docker-compose.yml
-#sudo rm -r analisa_viral
-#sudo rm -r VectCutAPI
+rm -f n8n.tar Dockerfile.extend
+rm -rf vendor
 
-ping 8.8.8.8
+echo "ℹ️  token.json, VectCutAPI, analisa_viral, dan n8n-script.sh dipertahankan agar workflow bisa diulang/debug."
