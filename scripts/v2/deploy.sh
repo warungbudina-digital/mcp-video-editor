@@ -83,7 +83,11 @@ pull_base_image() {
 
 build_extended_n8n() {
   log_section "🔧 BUILDING EXTENDED N8N IMAGE (+ffmpeg +yt-dlp)"
-  curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o vendor/yt-dlp
+  # yt-dlp_linux (bukan "yt-dlp" polos) = biner PyInstaller berdiri sendiri,
+  # TAK butuh python3 terpasang - base image n8n resmi tak punya package
+  # manager sama sekali (lihat catatan di generate_extend.sh), jadi tak ada
+  # cara pasang python3 lewat apk/apt kalaupun mau.
+  curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o vendor/yt-dlp
   chmod +x vendor/yt-dlp
   write_extend_dockerfile "$BASE_IMAGE"
   sudo docker build -f Dockerfile.extend -t "$EXTENDED_IMAGE" .
