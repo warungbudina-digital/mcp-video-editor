@@ -6,25 +6,24 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
 source "$SCRIPT_DIR/lib/common.sh"
-source "$SCRIPT_DIR/lib/generate_analyzer.sh"
 source "$SCRIPT_DIR/lib/generate_extend.sh"
 source "$SCRIPT_DIR/lib/generate_compose.sh"
 
 REMOTE_NAME="gdrive"
 TOKEN_FILE="$REPO_ROOT/token.json"
 RCLONE_CONF_PATH="$HOME/.config/rclone/rclone.conf"
-DEST_FOLDER="$REPO_ROOT"
-GDRIVE_FOLDER="Project-Tutorial/n8n"
-IMAGE_FILE="n8n.tar"
 SHARED_ROOT="workspace"
+BASE_IMAGE="n8nio/n8n:latest"
+EXTENDED_IMAGE="n8n-uploader:latest"
 
 install_tools() {
   log_section "📦 INSTALLING REQUIRED TOOLS"
   sudo apt update
-  sudo apt install -y htop jq
+  sudo apt install -y htop jq rclone
   require_cmd curl
   require_cmd git
   require_cmd docker
+  require_cmd rclone
 }
 
 prepare_shared_workspace() {
@@ -37,13 +36,8 @@ prepare_shared_workspace() {
   ensure_dir vendor
 }
 
-install_rclone() {
-  log_section "⬇️ INSTALLING RCLONE"
-  curl https://rclone.org/install.sh | sudo bash
-}
-
 configure_rclone() {
-  log_section "⚙️ CONFIGURING RCLONE"
+  log_section "⚙️ CONFIGURING RCLONE (sumber konten Gdrive)"
   ensure_file "$TOKEN_FILE"
   mkdir -p "$(dirname "$RCLONE_CONF_PATH")"
   TOKEN=$(jq -c . "$TOKEN_FILE")
@@ -56,38 +50,50 @@ RCLONE
   echo "✅ rclone.conf berhasil dibuat."
 }
 
-require_tunnel_token() {
-  ensure_env TUNNEL_TOKEN
+require_n8n_secrets() {
+  # DB Postgres (DB-VPS) + N8N_ENCRYPTION_KEY WAJIB di-inject dari luar (env),
+  # BUKAN dibiarkan n8n auto-generate - lihat README bagian "Kredensial durable".
+  ensure_env DB_POSTGRESDB_HOST
+  ensure_env DB_POSTGRESDB_PORT
+  ensure_env DB_POSTGRESDB_DATABASE
+  ensure_env DB_POSTGRESDB_USER
+  ensure_env DB_POSTGRESDB_PASSWORD
+  ensure_env N8N_ENCRYPTION_KEY
+  ensure_env N8N_BASIC_AUTH_USER
+  ensure_env N8N_BASIC_AUTH_PASSWORD
 }
 
-download_n8n_image() {
-  log_section "⬇️ DOWNLOADING n8n.tar FROM GOOGLE DRIVE"
-  sudo rclone copy --config="$RCLONE_CONF_PATH" "$REMOTE_NAME:$GDRIVE_FOLDER/$IMAGE_FILE" "$DEST_FOLDER" --progress
-  ensure_file "$IMAGE_FILE"
-}
-
-prepare_vendor_tools() {
-  log_section "🧰 PREPARING LOCAL TOOLS"
-  curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o vendor/yt-dlp
-  chmod +x vendor/yt-dlp
-}
-
-load_base_image() {
-  log_section "🐳 LOADING DOCKER IMAGE"
-  sudo docker load -i "$IMAGE_FILE"
-  sudo docker tag n8nio/n8n:latest custom-n8n:latest
+pull_base_image() {
+  log_section "🐳 PULLING OFFICIAL n8n IMAGE (n8nio/n8n, Docker Hub resmi)"
+  sudo docker pull "$BASE_IMAGE"
 }
 
 build_extended_n8n() {
-  log_section "🔧 BUILDING EXTENDED N8N IMAGE"
-  write_extend_dockerfile
-  sudo docker build -f Dockerfile.extend -t custom-n8n:latest .
+  log_section "🔧 BUILDING EXTENDED N8N IMAGE (+ffmpeg +yt-dlp)"
+  curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o vendor/yt-dlp
+  chmod +x vendor/yt-dlp
+  write_extend_dockerfile "$BASE_IMAGE"
+  sudo docker build -f Dockerfile.extend -t "$EXTENDED_IMAGE" .
 }
 
 generate_runtime_files() {
-  log_section "📝 GENERATING ANALYZER + COMPOSE FILES"
-  write_viral_analyzer_files
-  write_compose_file "$SHARED_ROOT"
+  log_section "📝 GENERATING docker-compose.yml + .env"
+  write_compose_file "$SHARED_ROOT" "$EXTENDED_IMAGE"
+  # .env eksplisit (bukan cuma export shell) - "sudo docker compose" TIDAK
+  # mewarisi env pemanggil tanpa -E, jadi substitusi ${VAR} di compose bisa
+  # kosong senyap kalau cuma andalkan environment. File ini BUKAN secret baru,
+  # cuma salinan operasional dari secret yang sudah di require_n8n_secrets.
+  cat > .env <<ENVFILE
+DB_POSTGRESDB_HOST=$DB_POSTGRESDB_HOST
+DB_POSTGRESDB_PORT=$DB_POSTGRESDB_PORT
+DB_POSTGRESDB_DATABASE=$DB_POSTGRESDB_DATABASE
+DB_POSTGRESDB_USER=$DB_POSTGRESDB_USER
+DB_POSTGRESDB_PASSWORD=$DB_POSTGRESDB_PASSWORD
+N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
+N8N_BASIC_AUTH_USER=$N8N_BASIC_AUTH_USER
+N8N_BASIC_AUTH_PASSWORD=$N8N_BASIC_AUTH_PASSWORD
+ENVFILE
+  chmod 600 .env
 }
 
 deploy_stack() {
@@ -96,22 +102,19 @@ deploy_stack() {
 }
 
 cleanup_temp() {
-  rm -f "$IMAGE_FILE" Dockerfile.extend
+  rm -f Dockerfile.extend
   rm -rf vendor
-  echo "ℹ️  token.json, workspace, analisa_viral, dan script dipertahankan untuk rerun/debug."
+  echo "ℹ️  token.json, workspace, dan script dipertahankan untuk rerun/debug."
 }
 
 main() {
   install_tools
   prepare_shared_workspace
-  install_rclone
   configure_rclone
-  require_tunnel_token
-  download_n8n_image
-  prepare_vendor_tools
-  load_base_image
-  generate_runtime_files
+  require_n8n_secrets
+  pull_base_image
   build_extended_n8n
+  generate_runtime_files
   deploy_stack
   cleanup_temp
 }

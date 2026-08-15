@@ -1,8 +1,9 @@
 #!/bin/bash
 
 write_extend_dockerfile() {
-  cat > Dockerfile.extend <<'DOCKER'
-FROM custom-n8n:latest
+  local base_image="$1"
+  cat > Dockerfile.extend <<DOCKER
+FROM ${base_image}
 
 USER root
 RUN apk add --no-cache \

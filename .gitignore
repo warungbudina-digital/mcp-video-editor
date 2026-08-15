@@ -1,11 +1,11 @@
 # secrets
 token.json
+.env
 
 # generated runtime artifacts
-n8n.tar
 vendor/
-VectCutAPI/
-analisa_viral/
 n8n_data/
 output/
 workspace/
+docker-compose.yml
+Dockerfile.extend
