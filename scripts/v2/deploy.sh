@@ -13,7 +13,13 @@ REMOTE_NAME="gdrive"
 TOKEN_FILE="$REPO_ROOT/token.json"
 RCLONE_CONF_PATH="$HOME/.config/rclone/rclone.conf"
 SHARED_ROOT="workspace"
-BASE_IMAGE="n8nio/n8n:latest"
+# PINNED, JANGAN "latest": n8n baru rilis v2.0 (Agu 2026) dgn breaking change
+# besar (task runner wajib container terpisah, ExecuteCommand/Code-node akses
+# env dibatasi default keamanan baru) yg BENTROK dgn desain single-container +
+# ffmpeg/yt-dlp via workflow proyek ini. Jalur 1.x resmi didukung security+
+# bugfix 3 bulan pasca rilis 2.0. Cek rilis 1.x terbaru sebelum bump manual:
+# https://github.com/n8n-io/n8n/releases
+BASE_IMAGE="n8nio/n8n:1.123.71"
 EXTENDED_IMAGE="n8n-uploader:latest"
 
 install_tools() {
