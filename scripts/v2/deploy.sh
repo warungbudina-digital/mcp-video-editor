@@ -45,15 +45,22 @@ prepare_shared_workspace() {
 configure_rclone() {
   log_section "⚙️ CONFIGURING RCLONE (sumber konten Gdrive)"
   ensure_file "$TOKEN_FILE"
+  ensure_env RCLONE_CLIENT_ID
+  ensure_env RCLONE_CLIENT_SECRET
   mkdir -p "$(dirname "$RCLONE_CONF_PATH")"
   TOKEN=$(jq -c . "$TOKEN_FILE")
+  # client_id/client_secret WAJIB ikut ditulis - tanpa ini rclone TAK BISA refresh
+  # access_token yg kadaluarsa (~1 jam) pakai client kita sendiri, dan akan
+  # diam-diam jatuh balik ke client rclone bawaan (shared, rawan rate-limit).
   cat > "$RCLONE_CONF_PATH" <<RCLONE
 [$REMOTE_NAME]
 type = drive
 scope = drive
+client_id = $RCLONE_CLIENT_ID
+client_secret = $RCLONE_CLIENT_SECRET
 token = $TOKEN
 RCLONE
-  echo "✅ rclone.conf berhasil dibuat."
+  echo "✅ rclone.conf berhasil dibuat (dgn client_id sendiri, bukan default rclone)."
 }
 
 require_n8n_secrets() {
