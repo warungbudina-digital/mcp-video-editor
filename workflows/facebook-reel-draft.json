@@ -1,0 +1,225 @@
+{
+  "name": "Facebook Reel - Draft Upload (gfootage -> Go Go Bud)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "n1-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-1400, 380]
+    },
+    {
+      "parameters": {
+        "content": "## Facebook Reel - Draft Upload\n\nDIBUAT 2026-08-24, BELUM PERNAH DIUJI LIVE (gogobuda offline saat dirakit).\nBaca `workflows/README.md` sebelum jalan pertama kali - ada 2 kredensial\nyang WAJIB diisi manual dulu, dan Page ID di-hardcode di 2 node (cari\n`896095410254698`).\n\nAlur: ambil Reel TERBARU dari `gfootage:VN-exports/` (rclone, remote\ntambahan yg disambung 2026-08-24) -> upload ke Meta Reels Publishing API\ndgn `video_state=DRAFT` (TIDAK auto-publish - masuk Page sbg draft utk\ndireview manual sebelum tayang).",
+        "height": 260,
+        "width": 380
+      },
+      "id": "n0-note",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1400, 60]
+    },
+    {
+      "parameters": {
+        "command": "rclone lsjson gfootage:VN-exports/ --files-only"
+      },
+      "id": "n2-list",
+      "name": "List VN-exports",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [-1180, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = $input.first().json.stdout;\nlet files;\ntry {\n  files = JSON.parse(stdout);\n} catch (e) {\n  throw new Error('Gagal parse output rclone lsjson: ' + stdout);\n}\nconst videos = files.filter(f => f.Name.toLowerCase().endsWith('.mp4'));\nif (videos.length === 0) {\n  throw new Error('Tidak ada file .mp4 di gfootage:VN-exports/ - jalankan pipeline konten (viral_analyzer -> RN7) dulu sebelum trigger workflow ini.');\n}\nvideos.sort((a, b) => new Date(b.ModTime) - new Date(a.ModTime));\nconst chosen = videos[0];\nconst base = chosen.Name.replace(/\\.mp4$/i, '');\nreturn [{\n  json: {\n    videoName: chosen.Name,\n    captionName: base + '.story-script.md',\n    baseName: base,\n    modTime: chosen.ModTime\n  }\n}];"
+      },
+      "id": "n3-pick",
+      "name": "Pick Latest Reel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-960, 380]
+    },
+    {
+      "parameters": {
+        "command": "=mkdir -p /app/output && rclone copy \"gfootage:VN-exports/{{$json[\"videoName\"]}}\" /app/output/"
+      },
+      "id": "n4-copyvideo",
+      "name": "Copy Video Locally",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [-740, 220]
+    },
+    {
+      "parameters": {
+        "command": "=rclone copy \"gfootage:VN-exports/{{$json[\"captionName\"]}}\" /app/output/ 2>/dev/null; exit 0"
+      },
+      "id": "n5-copycaption",
+      "name": "Copy Caption Locally",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [-520, 220],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "command": "=cat \"/app/output/{{$node[\"Pick Latest Reel\"].json[\"captionName\"]}}\" 2>/dev/null || echo \"Konten baru dari Go Go Bud - draft otomatis, mohon direview sebelum publish.\""
+      },
+      "id": "n6-readcaption",
+      "name": "Read Caption Text",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [-300, 220]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "=/app/output/{{$node[\"Pick Latest Reel\"].json[\"videoName\"]}}",
+        "options": {}
+      },
+      "id": "n7-readvideo",
+      "name": "Read Video File",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [-80, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v20.0/896095410254698/video_reels",
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {"name": "upload_phase", "value": "start"}
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {}
+      },
+      "id": "n8-fbstart",
+      "name": "FB: Start Upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-740, 540],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "TO_BE_LINKED",
+          "name": "Facebook Graph API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "n9-merge",
+      "name": "Merge Video+UploadURL",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [140, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$json[\"upload_url\"]}}",
+        "sendBinaryData": true,
+        "binaryPropertyName": "data",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "offset", "value": "0"},
+            {"name": "file_size", "value": "={{$binary.data.fileSize}}"}
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "n10-fbupload",
+      "name": "FB: Upload Binary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [360, 380],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TO_BE_LINKED",
+          "name": "Facebook Reels Upload OAuth Header"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v20.0/896095410254698/video_reels",
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {"name": "upload_phase", "value": "finish"},
+            {"name": "video_id", "value": "={{$node[\"FB: Start Upload\"].json[\"video_id\"]}}"},
+            {"name": "video_state", "value": "DRAFT"},
+            {"name": "description", "value": "={{$node[\"Read Caption Text\"].json[\"stdout\"]}}"}
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {}
+      },
+      "id": "n11-fbfinish",
+      "name": "FB: Finish Upload (Draft)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [580, 380],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "TO_BE_LINKED",
+          "name": "Facebook Graph API Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{"node": "List VN-exports", "type": "main", "index": 0}]]
+    },
+    "List VN-exports": {
+      "main": [[{"node": "Pick Latest Reel", "type": "main", "index": 0}]]
+    },
+    "Pick Latest Reel": {
+      "main": [[
+        {"node": "Copy Video Locally", "type": "main", "index": 0},
+        {"node": "FB: Start Upload", "type": "main", "index": 0}
+      ]]
+    },
+    "Copy Video Locally": {
+      "main": [[{"node": "Copy Caption Locally", "type": "main", "index": 0}]]
+    },
+    "Copy Caption Locally": {
+      "main": [[{"node": "Read Caption Text", "type": "main", "index": 0}]]
+    },
+    "Read Caption Text": {
+      "main": [[{"node": "Read Video File", "type": "main", "index": 0}]]
+    },
+    "Read Video File": {
+      "main": [[{"node": "Merge Video+UploadURL", "type": "main", "index": 0}]]
+    },
+    "FB: Start Upload": {
+      "main": [[{"node": "Merge Video+UploadURL", "type": "main", "index": 1}]]
+    },
+    "Merge Video+UploadURL": {
+      "main": [[{"node": "FB: Upload Binary", "type": "main", "index": 0}]]
+    },
+    "FB: Upload Binary": {
+      "main": [[{"node": "FB: Finish Upload (Draft)", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

@@ -61,6 +61,20 @@ client_secret = $RCLONE_CLIENT_SECRET
 token = $TOKEN
 RCLONE
   echo "✅ rclone.conf berhasil dibuat (dgn client_id sendiri, bukan default rclone)."
+
+  # gfootage (2026-08-24, fix gap): akun Gdrive TEMPAT hasil export Reel RN7
+  # benar2 mendarat (beda dari akun $REMOTE_NAME di atas). Stanza-nya datang
+  # SUDAH JADI dari HUB (base64, lihat lib-cs-deploy.sh _deploy_gogobuda_impl)
+  # krn kredensialnya milik akun terpisah, bukan sesuatu yg dibangun di sini.
+  # OPSIONAL - kalau env kosong (mis. deploy manual tanpa lewat hub), skip
+  # anggun, workflow n8n yg pakai remote gfootage tinggal gagal jelas nanti
+  # (bukan bikin deploy keseluruhan gagal krn 1 remote sekunder).
+  if [ -n "${GFOOTAGE_RCLONE_STANZA_B64:-}" ]; then
+    echo "$GFOOTAGE_RCLONE_STANZA_B64" | base64 -d >> "$RCLONE_CONF_PATH"
+    echo "✅ remote [gfootage] (sumber export Reel RN7) ditambahkan ke rclone.conf."
+  else
+    echo "ℹ️  GFOOTAGE_RCLONE_STANZA_B64 kosong - remote [gfootage] DILEWATI (workflow yg baca VN-exports akan gagal sampai ini diisi)."
+  fi
 }
 
 require_n8n_secrets() {
@@ -95,7 +109,7 @@ build_extended_n8n() {
 
 generate_runtime_files() {
   log_section "📝 GENERATING docker-compose.yml + .env"
-  write_compose_file "$SHARED_ROOT" "$EXTENDED_IMAGE"
+  write_compose_file "$SHARED_ROOT" "$EXTENDED_IMAGE" "$RCLONE_CONF_PATH"
   # .env eksplisit (bukan cuma export shell) - "sudo docker compose" TIDAK
   # mewarisi env pemanggil tanpa -E, jadi substitusi ${VAR} di compose bisa
   # kosong senyap kalau cuma andalkan environment. File ini BUKAN secret baru,

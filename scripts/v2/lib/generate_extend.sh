@@ -8,16 +8,22 @@ write_extend_dockerfile() {
   # sekali - ambil ffmpeg/ffprobe sbg biner statis via multi-stage COPY dari
   # image `mwader/static-ffmpeg` (dipakai luas persis utk kasus ini), sama pola
   # dgn yt-dlp yg sudah COPY biner mentah (bukan pip/apk install).
+  # rclone (2026-08-24, fix gap Execute Command node butuh akses gfootage) pakai
+  # pola sama: COPY biner statis dari image resmi `rclone/rclone` (Go binary,
+  # TANPA dependency dinamis - terverifikasi `ldd` balas "Not a valid dynamic
+  # program" = statically linked, aman di-COPY lintas base image apa pun).
   cat > Dockerfile.extend <<DOCKER
 FROM mwader/static-ffmpeg:latest AS ffmpeg
+FROM rclone/rclone:latest AS rclone
 
 FROM ${base_image}
 
 USER root
 COPY --from=ffmpeg /ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg /ffprobe /usr/local/bin/ffprobe
+COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
 COPY vendor/yt-dlp /usr/local/bin/yt-dlp
-RUN chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe /usr/local/bin/yt-dlp
+RUN chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe /usr/local/bin/rclone /usr/local/bin/yt-dlp
 USER node
 DOCKER
 }

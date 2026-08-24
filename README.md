@@ -19,7 +19,7 @@ bisa hilang kapan saja.
 
 ## Arsitektur
 
-- **Image dasar: `n8nio/n8n:latest` resmi dari Docker Hub** (bukan tarball pribadi) — di-extend dgn `ffmpeg`+`yt-dlp` via `Dockerfile.extend`.
+- **Image dasar: `n8nio/n8n:1.123.71` resmi dari Docker Hub** (PIN 1.x, bukan `:latest` — lihat alasan di komentar `deploy.sh`) — di-extend dgn `ffmpeg`+`yt-dlp`+`rclone` via `Dockerfile.extend`.
 - **State di Postgres DB-VPS** (`DB_TYPE=postgresdb`) — workflow/kredensial/histori TAHAN VM-recycle Cloud Shell.
 - **`N8N_ENCRYPTION_KEY` WAJIB di-pin & disimpan durable** di luar repo — kalau berubah, seluruh kredensial tersimpan di n8n jadi tak bisa didekripsi.
 - **Akses HANYA via WireGuard** (`10.66.66.61:5678`) — TANPA tunnel publik (Cloudflare Tunnel sengaja dihapus: instance ini memegang kredensial OAuth akun sosial media asli, jadi tak boleh diekspos ke internet).
@@ -51,9 +51,30 @@ tidak di repo) dan diinject otomatis oleh proses bring-up.
 
 ## Workflow upload
 
-Workflow n8n (JSON export) sebaiknya disimpan di folder `workflows/` (opsional,
-belum ada — tambahkan begitu workflow upload pertama selesai dirakit di editor
-n8n) supaya redeploy bisa auto-import, bukan dirakit ulang manual tiap VM baru.
+Workflow n8n (JSON export) disimpan di folder `workflows/` supaya tak hilang
+tiap VM Cloud Shell recycle. Lihat `workflows/README.md` untuk detail per
+workflow (setup kredensial, cara import, batasan yang disadari).
+
+## Catatan perbaikan (2026-08-24)
+
+- **Fix gap akun Gdrive**: `configure_rclone()` di `deploy.sh` kini APPEND
+  remote `[gfootage]` (akun tempat hasil export Reel RN7 benar-benar
+  mendarat) ke `rclone.conf`, selain `[gdrive]` (akun `gogobuda65` sendiri)
+  yang sudah ada. Stanza-nya datang dari HUB via env `GFOOTAGE_RCLONE_STANZA_B64`
+  (base64, di-generate `lib-cs-deploy.sh` tiap deploy) — opsional, deploy tetap
+  jalan kalau env ini kosong (cuma remote `[gfootage]` yang absen).
+- **Fix rclone TAK ADA di dalam container**: sebelumnya `rclone.conf` cuma
+  ditulis di HOST VM, sementara Execute Command node n8n jalan DI DALAM
+  container (Alpine "Docker Hardened", tanpa `curl`/package manager) yang
+  tidak pernah dapat biner rclone maupun file config-nya — jadi node yang
+  butuh rclone pasti gagal sejak awal. Sekarang: (a) `Dockerfile.extend`
+  COPY biner statis rclone dari image resmi `rclone/rclone` (pola sama dgn
+  ffmpeg/yt-dlp), (b) `docker-compose.yml` mount `rclone.conf` HOST read-only
+  ke `/home/node/.config/rclone/rclone.conf` + `RCLONE_CONFIG` env supaya
+  Execute Command node bisa langsung panggil `rclone ...` tanpa `--config`.
+- **Workflow n8n pertama dirakit**: `workflows/facebook-reel-draft.json`
+  (ambil Reel terbaru dari `gfootage:VN-exports/` → Meta Reels Publishing API
+  dgn `video_state=DRAFT`, tidak auto-publish). Lihat `workflows/README.md`.
 
 ## Catatan perbaikan (2026-08-15)
 

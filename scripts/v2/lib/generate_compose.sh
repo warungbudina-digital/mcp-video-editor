@@ -3,6 +3,7 @@
 write_compose_file() {
   local shared_root="$1"
   local image="$2"
+  local rclone_conf_path="$3"
   cat > docker-compose.yml <<COMPOSE
 services:
   n8n:
@@ -36,12 +37,21 @@ services:
       # Diakses via WireGuard SAJA (10.66.66.61:5678), TANPA tunnel publik -
       # N8N_HOST/WEBHOOK_URL sengaja tak di-set (default localhost, cukup utk
       # akses internal; isi manual kalau nanti benar2 butuh webhook publik).
+      # rclone.conf di-mount read-only ke path ini (lihat volumes) - env ini
+      # bikin panggilan "rclone ..." di Execute Command node tak perlu --config
+      # eksplisit tiap kali.
+      - RCLONE_CONFIG=/home/node/.config/rclone/rclone.conf
     volumes:
       - ./n8n_data:/home/node/.n8n
       - ./${shared_root}/raw_transkrip:/app/raw_transkrip
       - ./${shared_root}/raw_video:/app/raw_video
       - ./${shared_root}/raw_audio:/app/raw_audio
       - ./${shared_root}/output:/app/output
+      # rclone.conf HOST (ditulis configure_rclone() di deploy.sh, berisi remote
+      # [gdrive]=akun gogobuda65 sendiri + [gfootage]=akun tempat RN7 export Reel
+      # mendarat) - TANPA mount ini, Execute Command node tak bisa baca rclone.conf
+      # sama sekali (container jalan sbg user 'node', bukan host).
+      - ${rclone_conf_path}:/home/node/.config/rclone/rclone.conf:ro
     mem_limit: 1g
     cpus: 1.5
 
